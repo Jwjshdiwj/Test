@@ -1,0 +1,231 @@
+-- The animation IDs you want to set for the idle and walk animations
+local newIdleAnimationId = 16163355836
+local newWalkAnimationId = 16163350920
+local eAnimationId = 17670135152
+local punchAnimationId = 17794367623
+local isMusicPlaying = false
+local isTeleporting = false
+local musicArgs = {
+    [1] = "rbxassetid://9133844756",
+    [2] = nil -- Placeholder for the torso object
+}
+local currentMusic
+local screenGui -- Store the screenGui for removal later
+
+-- Function to blend idle and walk animations
+local function blendAnimations(character)
+    local humanoid = character:FindFirstChild("Humanoid")
+    if humanoid then
+        local animator = humanoid:FindFirstChildOfClass("Animator")
+        if animator then
+            local newIdleAnimation = Instance.new("Animation")
+            newIdleAnimation.AnimationId = "rbxassetid://" .. newIdleAnimationId
+            
+            local newWalkAnimation = Instance.new("Animation")
+            newWalkAnimation.AnimationId = "rbxassetid://" .. newWalkAnimationId
+
+            local idleAnimTrack = animator:LoadAnimation(newIdleAnimation)
+            local walkAnimTrack = animator:LoadAnimation(newWalkAnimation)
+
+            idleAnimTrack.Priority = Enum.AnimationPriority.Idle
+            walkAnimTrack.Priority = Enum.AnimationPriority.Movement
+
+            idleAnimTrack:Play()
+            
+            humanoid.Running:Connect(function(speed)
+                if speed > 0 then
+                    if not walkAnimTrack.IsPlaying then
+                        walkAnimTrack:Play()
+                    end
+                else
+                    if walkAnimTrack.IsPlaying then
+                        walkAnimTrack:Stop()
+                    end
+                end
+            end)
+
+            idleAnimTrack:AdjustSpeed(1)
+            walkAnimTrack:AdjustSpeed(1)
+        end
+    end
+end
+
+-- Function to play the E animation
+local function playEAnimation()
+    local player = game.Players.LocalPlayer
+    local character = player.Character
+    if character then
+        local humanoid = character:FindFirstChild("Humanoid")
+        local animator = humanoid and humanoid:FindFirstChildOfClass("Animator")
+        
+        if animator then
+            local eAnimation = Instance.new("Animation")
+            eAnimation.AnimationId = "rbxassetid://" .. eAnimationId
+            local eAnimTrack = animator:LoadAnimation(eAnimation)
+            eAnimTrack:Play()
+        end
+    end
+end
+
+-- Function to execute the Boxer Glove Hit logic
+local function punch()
+    local player = game.Players.LocalPlayer
+    local character = player.Character or player.CharacterAdded:Wait()
+    local ReplicatedStorage = game:GetService("ReplicatedStorage")
+    local Events = ReplicatedStorage:WaitForChild("Events")
+    local BoxingEvent = Events:WaitForChild("Boxing")
+    
+    -- Load punch animation
+    local punchAnim = Instance.new("Animation")
+    punchAnim.AnimationId = "rbxassetid://" .. punchAnimationId
+    local punchTrack = character:WaitForChild("Humanoid"):LoadAnimation(punchAnim)
+    
+    punchTrack:Play() -- Play the punch animation
+    
+    -- Fire boxing event (for all players or other logic)
+    for _, otherPlayer in pairs(game.Players:GetPlayers()) do
+        if otherPlayer ~= player then
+            local args = {
+                [1] = otherPlayer,
+                [2] = true
+            }
+            BoxingEvent:FireServer(unpack(args))
+        end
+    end
+end
+
+-- Combined function for E button
+local function onEButtonPressed()
+    playEAnimation()
+    punch()
+end
+
+-- Function to teleport the player to a specified part
+local function teleportToPart(part)
+    local player = game.Players.LocalPlayer
+    if player.Character and part then
+        player.Character:MoveTo(part.Position)
+    end
+end
+
+-- Function to toggle music on and off using remote event
+local function toggleMusic()
+    local player = game.Players.LocalPlayer
+    local torso = player.Character:FindFirstChild("Torso") or player.Character:FindFirstChild("UpperTorso")
+    
+    if torso then
+        musicArgs[2] = torso
+
+        if isMusicPlaying then
+            if currentMusic then
+                currentMusic:Stop()
+                currentMusic = nil
+            end
+        else
+            currentMusic = game:GetService("ReplicatedStorage"):WaitForChild("PlaySoundRemote"):InvokeServer(unpack(musicArgs))
+            if currentMusic then
+                currentMusic.Volume = 2 -- Increase volume to make music louder
+            end
+        end
+
+        isMusicPlaying = not isMusicPlaying
+    end
+end
+
+-- Function to enable teleport mode
+local function enableTeleportMode()
+    isTeleporting = true
+    local player = game.Players.LocalPlayer
+    local playerMouse = player:GetMouse()
+
+    -- When player clicks, teleport to the clicked position
+    local function onClick()
+        if isTeleporting then
+            local targetPosition = playerMouse.Hit.p
+            player.Character:MoveTo(targetPosition)
+            isTeleporting = false -- Disable teleport mode after one teleport
+        end
+    end
+
+    playerMouse.Button1Down:Connect(onClick)
+end
+
+-- Create buttons on the screen
+local function createButtons()
+    local playerGui = game.Players.LocalPlayer:WaitForChild("PlayerGui")
+    
+    if screenGui then
+        screenGui:Destroy() -- Remove existing GUI to avoid duplication
+    end
+
+    screenGui = Instance.new("ScreenGui")
+    screenGui.Parent = playerGui
+
+    -- Music Toggle Button ("F")
+    local musicButton = Instance.new("TextButton")
+    musicButton.Size = UDim2.new(0, 50, 0, 50)
+    musicButton.Position = UDim2.new(1, -60, 0.5, -25) -- Right middle of the screen
+    musicButton.Text = "F"
+    musicButton.BackgroundColor3 = Color3.fromRGB(255, 0, 0) -- Red color
+    musicButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    musicButton.Font = Enum.Font.SourceSansBold
+    musicButton.TextScaled = true
+    musicButton.Parent = screenGui
+    musicButton.MouseButton1Click:Connect(toggleMusic)
+
+    -- Teleport Button ("T")
+    local teleportButton = Instance.new("TextButton")
+    teleportButton.Size = UDim2.new(0, 50, 0, 50)
+    teleportButton.Position = UDim2.new(1, -120, 0.5, -25) -- Left of the "F" button
+    teleportButton.Text = "T"
+    teleportButton.BackgroundColor3 = Color3.fromRGB(255, 0, 0) -- Red color
+    teleportButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    teleportButton.Font = Enum.Font.SourceSansBold
+    teleportButton.TextScaled = true
+    teleportButton.Parent = screenGui
+    teleportButton.MouseButton1Click:Connect(enableTeleportMode)
+
+    -- Play E Animation & Punch Button ("E")
+    local eButton = Instance.new("TextButton")
+    eButton.Size = UDim2.new(0, 50, 0, 50)
+    eButton.Position = UDim2.new(1, -90, 0.5, -85) -- Middle above the "F" and "T" buttons
+    eButton.Text = "E"
+    eButton.BackgroundColor3 = Color3.fromRGB(255, 0, 0) -- Red color
+    eButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    eButton.Font = Enum.Font.SourceSansBold
+    eButton.TextScaled = true
+    eButton.Parent = screenGui
+    eButton.MouseButton1Click:Connect(onEButtonPressed)
+end
+
+-- Function to clean up the button when the player dies or resets
+local function onPlayerDied()
+    if screenGui then
+        screenGui:Destroy() -- Remove the button permanently
+        screenGui = nil
+    end
+end
+
+-- Event listener for when the player character is added
+game.Players.LocalPlayer.CharacterAdded:Connect(function(character)
+    blendAnimations(character)
+    teleportToPart(workspace.Arena["main island"].Grass)
+    createButtons()
+    
+    -- Listen for the player's humanoid dying
+    local humanoid = character:WaitForChild("Humanoid")
+    humanoid.Died:Connect(onPlayerDied)
+end)
+
+-- In case the player is already loaded, blend animations, teleport, and create button immediately
+if game.Players.LocalPlayer.Character then
+    blendAnimations(game.Players.LocalPlayer.Character)
+    teleportToPart(workspace.Arena["main island"].Grass)
+    createButtons()
+    
+    -- Listen for the player's humanoid dying
+    local humanoid = game.Players.LocalPlayer.Character:FindFirstChild("Humanoid")
+    if humanoid then
+        humanoid.Died:Connect(onPlayerDied)
+    end
+end
